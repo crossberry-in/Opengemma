@@ -12,13 +12,19 @@ import {
   SESSION_FILE_PREFIX,
   type ConversationRecord,
 } from './chatRecordingService.js';
+import { ClearcutLogger } from '../telemetry/clearcut-logger/clearcut-logger.js';
+import {
+  MemoryExtractionEvent,
+  MemoryExtractionSkippedEvent,
+} from '../telemetry/types.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 const MIN_MESSAGES_FOR_SUMMARY = 1;
 
 /**
- * Generates and saves a summary for a session file.
+ * Generates and saves a summary and memory scratchpad for a session file.
+ * Uses a single LLM call to produce both outputs.
  */
 async function generateAndSaveSummary(
   config: Config,
@@ -55,16 +61,34 @@ async function generateAndSaveSummary(
   }
   const baseLlmClient = new BaseLlmClient(contentGenerator, config);
   const summaryService = new SessionSummaryService(baseLlmClient);
+  const logger = ClearcutLogger.getInstance(config);
+  const messageCount = conversation.messages.length;
 
-  // Generate summary
-  const summary = await summaryService.generateSummary({
+  // Generate memory extraction (produces both summary and scratchpad)
+  const startTime = Date.now();
+  const result = await summaryService.generateMemoryExtraction({
     messages: conversation.messages,
   });
+  const durationMs = Date.now() - startTime;
 
-  if (!summary) {
-    debugLogger.warn(
-      `[SessionSummary] Failed to generate summary for ${sessionPath}`,
-    );
+  if (!result) {
+    // Fall back to simple summary if extraction fails
+    const summary = await summaryService.generateSummary({
+      messages: conversation.messages,
+    });
+    if (summary) {
+      await saveSummaryOnly(sessionPath, summary);
+      logger?.logMemoryExtractionEvent(
+        new MemoryExtractionEvent(false, durationMs, messageCount, 0, true),
+      );
+    } else {
+      logger?.logMemoryExtractionEvent(
+        new MemoryExtractionEvent(false, durationMs, messageCount, 0, false),
+      );
+      debugLogger.warn(
+        `[SessionSummary] Failed to generate summary for ${sessionPath}`,
+      );
+    }
     return;
   }
 
@@ -73,7 +97,7 @@ async function generateAndSaveSummary(
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const freshConversation: ConversationRecord = JSON.parse(freshContent);
 
-  // Check if summary was added by another process
+  // Check if extraction was added by another process
   if (freshConversation.summary) {
     debugLogger.debug(
       `[SessionSummary] Summary was added by another process for ${sessionPath}`,
@@ -81,12 +105,47 @@ async function generateAndSaveSummary(
     return;
   }
 
-  // Add summary and write back
+  // Add both summary and scratchpad, then write back
+  freshConversation.summary = result.summary;
+  freshConversation.memoryScratchpad = result.memoryScratchpad;
+  freshConversation.lastUpdated = new Date().toISOString();
+  await fs.writeFile(sessionPath, JSON.stringify(freshConversation, null, 2));
+
+  logger?.logMemoryExtractionEvent(
+    new MemoryExtractionEvent(
+      true,
+      durationMs,
+      messageCount,
+      result.memoryScratchpad.length,
+      false,
+    ),
+  );
+
+  debugLogger.debug(
+    `[SessionSummary] Saved memory scratchpad for ${sessionPath}: "${result.summary}"`,
+  );
+}
+
+/**
+ * Saves only the summary (fallback when memory extraction fails).
+ */
+async function saveSummaryOnly(
+  sessionPath: string,
+  summary: string,
+): Promise<void> {
+  const freshContent = await fs.readFile(sessionPath, 'utf-8');
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const freshConversation: ConversationRecord = JSON.parse(freshContent);
+
+  if (freshConversation.summary || freshConversation.memoryScratchpad) {
+    return;
+  }
+
   freshConversation.summary = summary;
   freshConversation.lastUpdated = new Date().toISOString();
   await fs.writeFile(sessionPath, JSON.stringify(freshConversation, null, 2));
   debugLogger.debug(
-    `[SessionSummary] Saved summary for ${sessionPath}: "${summary}"`,
+    `[SessionSummary] Saved summary (fallback) for ${sessionPath}: "${summary}"`,
   );
 }
 
@@ -123,38 +182,41 @@ export async function getPreviousSession(
     // Filename format: session-YYYY-MM-DDTHH-MM-XXXXXXXX.json
     sessionFiles.sort((a, b) => b.localeCompare(a));
 
-    // Check the most recently created session
-    const mostRecentFile = sessionFiles[0];
-    const filePath = path.join(chatsDir, mostRecentFile);
+    // Iterate through sessions to find the first eligible one.
+    // The most recent file is typically the current active session (few messages),
+    // so we skip past ineligible sessions.
+    for (const file of sessionFiles.slice(0, 20)) {
+      const filePath = path.join(chatsDir, file);
 
-    try {
-      const content = await fs.readFile(filePath, 'utf-8');
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const conversation: ConversationRecord = JSON.parse(content);
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        const conversation: ConversationRecord = JSON.parse(content);
 
-      if (conversation.summary) {
-        debugLogger.debug(
-          '[SessionSummary] Most recent session already has summary',
-        );
-        return null;
+        // Skip if summary already exists
+        if (conversation.summary) {
+          continue;
+        }
+
+        // Skip sessions with too few user messages
+        const userMessageCount = conversation.messages.filter(
+          (m) => m.type === 'user',
+        ).length;
+        if (userMessageCount <= MIN_MESSAGES_FOR_SUMMARY) {
+          continue;
+        }
+
+        return filePath;
+      } catch {
+        // Skip unreadable files
+        continue;
       }
-
-      // Only generate summaries for sessions with more than 1 user message
-      const userMessageCount = conversation.messages.filter(
-        (m) => m.type === 'user',
-      ).length;
-      if (userMessageCount <= MIN_MESSAGES_FOR_SUMMARY) {
-        debugLogger.debug(
-          `[SessionSummary] Most recent session has ${userMessageCount} user message(s), skipping (need more than ${MIN_MESSAGES_FOR_SUMMARY})`,
-        );
-        return null;
-      }
-
-      return filePath;
-    } catch {
-      debugLogger.debug('[SessionSummary] Could not read most recent session');
-      return null;
     }
+
+    debugLogger.debug(
+      '[SessionSummary] No eligible session found for memory extraction',
+    );
+    return null;
   } catch (error) {
     debugLogger.debug(
       `[SessionSummary] Error finding previous session: ${error instanceof Error ? error.message : String(error)}`,
@@ -172,6 +234,10 @@ export async function generateSummary(config: Config): Promise<void> {
     const sessionPath = await getPreviousSession(config);
     if (sessionPath) {
       await generateAndSaveSummary(config, sessionPath);
+    } else {
+      ClearcutLogger.getInstance(config)?.logMemoryExtractionSkippedEvent(
+        new MemoryExtractionSkippedEvent('no_eligible_session'),
+      );
     }
   } catch (error) {
     // Log but don't throw - we want graceful degradation
