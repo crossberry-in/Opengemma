@@ -2178,6 +2178,26 @@ const SETTINGS_SCHEMA = {
           'Replace the built-in save_memory tool with a memory manager subagent that supports adding, removing, de-duplicating, and organizing memories.',
         showInDialog: true,
       },
+      powerUserProfile: {
+        type: 'boolean',
+        label: 'Use the power user profile for massive contexts.',
+        category: 'Experimental',
+        requiresRestart: true,
+        default: false,
+        description:
+          'Enables continuous minimal GC near the max tokens limit instead of a blocked backbuffer.',
+        showInDialog: true,
+      },
+      stressTestProfile: {
+        type: 'boolean',
+        label: 'Stress Test Profile (Context GC)',
+        category: 'Experimental',
+        requiresRestart: true,
+        default: false,
+        description:
+          'Aggressively limits the token budget (6k retained, 12k max) to force rapid background snapshotting and foreground truncations for local E2E testing of the context system.',
+        showInDialog: true,
+      },
       generalistProfile: {
         type: 'boolean',
         label: 'Use the generalist profile to manage agent contexts.',
@@ -2491,6 +2511,35 @@ const SETTINGS_SCHEMA = {
         default: {},
         showInDialog: false,
         properties: {
+          maxPressureStrategy: {
+            type: 'string',
+            label: 'Max Pressure Strategy',
+            category: 'Context Management',
+            requiresRestart: true,
+            default: 'truncate',
+            description: 'Action to take when hitting the synchronous token ceiling.',
+            showInDialog: false,
+            enum: ['truncate', 'compress', 'rollingSummarizer'],
+          },
+          gcTarget: {
+            type: 'string',
+            label: 'GC Target',
+            category: 'Context Management',
+            requiresRestart: true,
+            default: 'incremental',
+            description: 'The target floor for synchronous context shedding.',
+            showInDialog: false,
+            enum: ['incremental', 'freeNTokens', 'max'],
+          },
+          freeTokensTarget: {
+            type: 'number',
+            label: 'Free Tokens Target',
+            category: 'Context Management',
+            requiresRestart: true,
+            default: undefined,
+            description: 'Amount of tokens to free when gcTarget is freeNTokens.',
+            showInDialog: false,
+          },
           maxTokens: {
             type: 'number',
             label: 'Max Tokens',
