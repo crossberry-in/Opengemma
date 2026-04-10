@@ -469,9 +469,9 @@ class EditToolInvocation
       try {
         this.resolvedPath = resolveAndValidatePlanPath(
           this.params.file_path,
-          this.config.getPlansDir(),
+          this.config.storage.getPlansDir(),
         );
-      } catch (e) {
+      } catch {
         // Validation fails, set resolvedPath to something that will fail validation downstream or just the raw path.
         // It's safer to store it so validation in execute() or getConfirmationDetails() catches it.
         this.resolvedPath = this.params.file_path;
@@ -1064,7 +1064,7 @@ export class EditTool
       try {
         resolvedPath = resolveAndValidatePlanPath(
           params.file_path,
-          this.config.getPlansDir(),
+          this.config.storage.getPlansDir(),
         );
       } catch (err) {
         return err instanceof Error ? err.message : String(err);

@@ -172,9 +172,9 @@ class WriteFileToolInvocation extends BaseToolInvocation<
       try {
         this.resolvedPath = resolveAndValidatePlanPath(
           this.params.file_path,
-          this.config.getPlansDir(),
+          this.config.storage.getPlansDir(),
         );
-      } catch (e) {
+      } catch {
         // Validation fails, set resolvedPath to something that will fail validation downstream or just the raw path.
         this.resolvedPath = this.params.file_path;
       }
@@ -509,7 +509,7 @@ export class WriteFileTool
       try {
         resolvedPath = resolveAndValidatePlanPath(
           filePath,
-          this.config.getPlansDir(),
+          this.config.storage.getPlansDir(),
         );
       } catch (err) {
         return err instanceof Error ? err.message : String(err);

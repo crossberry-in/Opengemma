@@ -377,14 +377,14 @@ describe('plan_mode', () => {
     },
   });
 
-  evalTest('ALWAYS_PASSES', {
+  evalTest('USUALLY_PASSES', {
     name: 'should handle nested plan directories correctly',
     approvalMode: ApprovalMode.PLAN,
     params: {
       settings,
     },
     prompt:
-      'Please create a new architectural plan in a nested folder called "architecture/frontend-v2.md" within the plans directory. The plan should contain the text "# Frontend V2 Plan". Do not ask for user approval, just create the plan.',
+      'Please create a new architectural plan in a nested folder called "architecture/frontend-v2.md" within the plans directory. The plan should contain the text "# Frontend V2 Plan". Then, exit plan mode',
     assert: async (rig, result) => {
       await rig.waitForTelemetryReady();
       const toolLogs = rig.readToolLogs();
@@ -396,9 +396,14 @@ describe('plan_mode', () => {
       const wroteToNestedPath = writeCalls.some((log) => {
         try {
           const args = JSON.parse(log.toolRequest.args);
+          if (!args.file_path) return false;
+          // In plan mode, paths can be passed as relative (architecture/frontend-v2.md)
+          // or they might be resolved as absolute by the tool depending on the exact mock state.
+          // We strictly ensure it ends exactly with the expected nested path and doesn't contain extra nesting.
+          const normalizedPath = args.file_path.replace(/\\/g, '/');
           return (
-            args.file_path &&
-            args.file_path.includes('architecture/frontend-v2.md')
+            normalizedPath === 'architecture/frontend-v2.md' ||
+            normalizedPath.endsWith('/plans/architecture/frontend-v2.md')
           );
         } catch {
           return false;

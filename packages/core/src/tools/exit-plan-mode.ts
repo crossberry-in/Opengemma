@@ -25,7 +25,6 @@ import {
   resolveAndValidatePlanPath,
 } from '../utils/planUtils.js';
 import { ApprovalMode } from '../policy/types.js';
-// Remove unused imports
 import { logPlanExecution } from '../telemetry/loggers.js';
 import { PlanExecutionEvent } from '../telemetry/types.js';
 import { getExitPlanModeDefinition } from './definitions/coreTools.js';
@@ -66,14 +65,14 @@ export class ExitPlanModeTool extends BaseDeclarativeTool<
     try {
       resolveAndValidatePlanPath(
         params.plan_filename,
-        this.config.getPlansDir(),
+        this.config.storage.getPlansDir(),
       );
     } catch (e) {
       if (e instanceof Error && e.message.startsWith('Security violation')) {
         return `Access denied: plan path (${path.join(
-          this.config.getPlansDir(),
+          this.config.storage.getPlansDir(),
           params.plan_filename,
-        )}) must be within the designated plans directory (${this.config.getPlansDir()}).`;
+        )}) must be within the designated plans directory (${this.config.storage.getPlansDir()}).`;
       }
       return e instanceof Error ? e.message : String(e);
     }
@@ -126,7 +125,7 @@ export class ExitPlanModeInvocation extends BaseToolInvocation<
 
     const pathError = await validatePlanPath(
       this.params.plan_filename,
-      this.config.getPlansDir(),
+      this.config.storage.getPlansDir(),
     );
     if (pathError) {
       this.planValidationError = pathError;
@@ -176,7 +175,7 @@ export class ExitPlanModeInvocation extends BaseToolInvocation<
   }
 
   getDescription(): string {
-    return `Requesting plan approval for: ${path.join(this.config.getPlansDir(), this.params.plan_filename)}`;
+    return `Requesting plan approval for: ${path.join(this.config.storage.getPlansDir(), this.params.plan_filename)}`;
   }
 
   /**
@@ -186,7 +185,7 @@ export class ExitPlanModeInvocation extends BaseToolInvocation<
   private getResolvedPlanPath(): string {
     return resolveAndValidatePlanPath(
       this.params.plan_filename,
-      this.config.getPlansDir(),
+      this.config.storage.getPlansDir(),
     );
   }
 
