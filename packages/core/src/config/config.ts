@@ -23,6 +23,7 @@ import {
   createContentGeneratorConfig,
   type ContentGenerator,
   type ContentGeneratorConfig,
+  type VertexAiRoutingConfig,
 } from '../core/contentGenerator.js';
 import type { OverageStrategy } from '../billing/billing.js';
 import { PromptRegistry } from '../prompts/prompt-registry.js';
@@ -728,6 +729,7 @@ export interface ConfigParameters {
   billing?: {
     overageStrategy?: OverageStrategy;
   };
+  vertexAiRouting?: VertexAiRoutingConfig;
 }
 
 export class Config implements McpContext, AgentLoopContext {
@@ -933,6 +935,7 @@ export class Config implements McpContext, AgentLoopContext {
   private readonly billing: {
     overageStrategy: OverageStrategy;
   };
+  private readonly vertexAiRouting: VertexAiRoutingConfig | undefined;
 
   private readonly enableAgents: boolean;
   private agents: AgentSettings;
@@ -1355,6 +1358,7 @@ export class Config implements McpContext, AgentLoopContext {
     this.billing = {
       overageStrategy: params.billing?.overageStrategy ?? 'ask',
     };
+    this.vertexAiRouting = params.vertexAiRouting;
 
     if (params.contextFileName) {
       setGeminiMdFilename(params.contextFileName);
@@ -1542,6 +1546,7 @@ export class Config implements McpContext, AgentLoopContext {
       apiKey,
       baseUrl,
       customHeaders,
+      this.vertexAiRouting,
     );
     this.contentGenerator = await createContentGenerator(
       newContentGeneratorConfig,
