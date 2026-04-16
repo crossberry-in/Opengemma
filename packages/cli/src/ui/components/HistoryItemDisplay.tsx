@@ -36,8 +36,10 @@ import { ChatList } from './views/ChatList.js';
 import { ModelMessage } from './messages/ModelMessage.js';
 import { ThinkingMessage } from './messages/ThinkingMessage.js';
 import { HintMessage } from './messages/HintMessage.js';
+import { ForumMessage } from './messages/ForumMessage.js';
 import { getInlineThinkingMode } from '../utils/inlineThinkingMode.js';
 import { useSettings } from '../contexts/SettingsContext.js';
+import { theme } from '../semantic-colors.js';
 
 interface HistoryItemDisplayProps {
   item: HistoryItem;
@@ -90,6 +92,49 @@ export const HistoryItemDisplay: React.FC<HistoryItemDisplayProps> = ({
       )}
       {itemForDisplay.type === 'hint' && (
         <HintMessage text={itemForDisplay.text} />
+      )}
+      {itemForDisplay.type === 'forum_system' && (
+        <ForumMessage
+          label={itemForDisplay.label}
+          text={itemForDisplay.text}
+          terminalWidth={terminalWidth}
+          color={theme.ui.comment}
+        />
+      )}
+      {itemForDisplay.type === 'forum_user' && (
+        <ForumMessage
+          label={itemForDisplay.label}
+          text={itemForDisplay.text}
+          terminalWidth={terminalWidth}
+          color={theme.text.primary}
+        />
+      )}
+      {itemForDisplay.type === 'forum_agent' && (
+        <ForumMessage
+          label={itemForDisplay.label}
+          text={itemForDisplay.text}
+          terminalWidth={terminalWidth}
+        />
+      )}
+      {itemForDisplay.type === 'forum_activity' && (
+        <ForumMessage
+          label={`${itemForDisplay.label} ${itemForDisplay.activityKind}`}
+          text={itemForDisplay.text}
+          terminalWidth={terminalWidth}
+          color={
+            itemForDisplay.activityKind === 'error'
+              ? theme.status.error
+              : theme.ui.comment
+          }
+        />
+      )}
+      {itemForDisplay.type === 'forum_final' && (
+        <ForumMessage
+          label={itemForDisplay.label}
+          text={itemForDisplay.text}
+          terminalWidth={terminalWidth}
+          color={theme.status.success}
+        />
       )}
       {itemForDisplay.type === 'user' && (
         <UserMessage text={itemForDisplay.text} width={terminalWidth} />
