@@ -2052,6 +2052,8 @@ Logging in with Google... Restarting Gemini CLI to continue.
 
   useKeypress(handleGlobalKeypress, { isActive: true, priority: true });
 
+  const isSelectionMode = isAlternateBuffer && !mouseMode;
+
   useKeypress(
     (key: Key) => {
       if (
@@ -2066,13 +2068,16 @@ Logging in with Google... Restarting Gemini CLI to continue.
       }
 
       setCopyModeEnabled(false);
-      if (mouseMode) {
+
+      if (isSelectionMode) {
+        setMouseMode(true);
+      } else if (mouseMode) {
         enableMouseEvents();
       }
       return true;
     },
     {
-      isActive: copyModeEnabled,
+      isActive: copyModeEnabled || isSelectionMode,
       // We need to receive keypresses first so they do not bubble to other
       // handlers.
       priority: KeypressPriority.Critical,
