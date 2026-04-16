@@ -92,7 +92,6 @@ import {
   ApiKeyUpdatedEvent,
   LegacyAgentProtocol,
   type InjectionSource,
-  startMemoryService,
 } from '@google/gemini-cli-core';
 import { validateAuthMethod } from '../config/auth.js';
 import process from 'node:process';
@@ -130,6 +129,7 @@ import { useKeypress, type Key } from './hooks/useKeypress.js';
 import { KeypressPriority } from './contexts/KeypressContext.js';
 import { Command } from './key/keyMatchers.js';
 import { useLoadingIndicator } from './hooks/useLoadingIndicator.js';
+import { useInactivityTimer } from './hooks/useInactivityTimer.js';
 import { useShellInactivityStatus } from './hooks/useShellInactivityStatus.js';
 import { useFolderTrust } from './hooks/useFolderTrust.js';
 import { useIdeTrustListener } from './hooks/useIdeTrustListener.js';
@@ -482,13 +482,6 @@ export const AppContainer = (props: AppContainerProps) => {
       setConfigInitialized(true);
       startupProfiler.flush(config);
 
-      // Fire-and-forget memory service (skill extraction from past sessions)
-      if (config.isMemoryManagerEnabled()) {
-        startMemoryService(config).catch((e) => {
-          debugLogger.error('Failed to start memory service:', e);
-        });
-      }
-
       const sessionStartSource = resumedSessionData
         ? SessionStartSource.Resume
         : SessionStartSource.Startup;
@@ -540,6 +533,7 @@ export const AppContainer = (props: AppContainerProps) => {
 
       // Fire SessionEnd hook on cleanup (only if hooks are enabled)
       await config?.getHookSystem()?.fireSessionEndEvent(SessionEndReason.Exit);
+      await config?.getGeminiClient()?.shutdownSessionServices?.();
     };
     registerCleanup(cleanupFn);
 
@@ -1269,6 +1263,29 @@ Logging in with Google... Restarting Gemini CLI to continue.
   useEffect(() => {
     lastOutputTimeRef.current = lastOutputTime;
   }, [lastOutputTime]);
+
+  const memoryIdleTimeoutMs = isGeminiClientInitialized
+    ? config.getGeminiClient()?.getMemoryIdleTimeoutMs?.()
+    : undefined;
+  const isMemorySessionIdle = useInactivityTimer(
+    isConfigInitialized &&
+      isGeminiClientInitialized &&
+      streamingState === StreamingState.Idle &&
+      memoryIdleTimeoutMs !== undefined,
+    historyManager.history.length,
+    memoryIdleTimeoutMs ?? 0,
+  );
+
+  useEffect(() => {
+    if (!isMemorySessionIdle) {
+      return;
+    }
+
+    const idlePromise = config.getGeminiClient()?.onIdle?.();
+    idlePromise?.catch((error: unknown) =>
+      debugLogger.warn('Failed to run memory idle hook:', error),
+    );
+  }, [config, isMemorySessionIdle]);
 
   const { shouldShowFocusHint, inactivityStatus } = useShellInactivityStatus({
     activePtyId,

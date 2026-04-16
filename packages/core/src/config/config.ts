@@ -371,6 +371,56 @@ export interface BrowserAgentCustomConfig {
   blockFileUploads?: boolean;
 }
 
+export interface MemoryProvider {
+  /**
+   * Unique identifier for this provider.
+   */
+  readonly id: string;
+
+  /**
+   * The duration (in milliseconds) of user inactivity before `onIdle` is triggered.
+   * If `onIdle` is implemented but this is undefined, it defaults to 5 minutes (300000ms).
+   */
+  readonly idleTimeoutMs?: number;
+
+  /**
+   * Called when a new interactive or background session begins.
+   * Used to establish connections, read configuration, or pre-warm caches.
+   */
+  onSessionStart?(config: Config, sessionId: string): Promise<void> | void;
+
+  /**
+   * Returns static instructions to be injected into the LLM's system prompt.
+   */
+  getSystemInstructions?(): Promise<string> | string;
+
+  /**
+   * Returns the dynamic, recalled context for the current turn based on the user's query.
+   */
+  getTurnContext?(query: string): Promise<string> | string;
+
+  /**
+   * Hook called after the LLM completes a turn.
+   *
+   * MUST return synchronously. Any persistence work should be fired
+   * fire-and-forget; the provider is responsible for its own error
+   * handling on background tasks. The return value is ignored — the
+   * orchestrator does NOT await it and will not surface promise
+   * rejections from awaited continuations.
+   */
+  onTurnComplete?(userMessage: string, assistantMessage: string): void;
+
+  /**
+   * Called when the user has been inactive for `idleTimeoutMs`.
+   */
+  onIdle?(): Promise<void> | void;
+
+  /**
+   * Called when the session is gracefully exiting.
+   */
+  onSessionEnd?(): Promise<void> | void;
+}
+
 /**
  * All information required in CLI to handle an extension. Defined in Core so
  * that the collection of loaded, active, and inactive extensions can be passed
@@ -392,6 +442,12 @@ export interface GeminiCLIExtension {
   resolvedSettings?: ResolvedExtensionSetting[];
   skills?: SkillDefinition[];
   agents?: AgentDefinition[];
+  /**
+   * An optional memory provider contributed by this extension.
+   * If an active extension contributes a memory provider, the CLI will use it
+   * as the active memory backend instead of the default local implementation.
+   */
+  memoryProvider?: MemoryProvider;
   /**
    * Custom themes contributed by this extension.
    * These themes will be registered when the extension is activated.
