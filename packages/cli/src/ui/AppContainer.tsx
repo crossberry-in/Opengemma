@@ -172,7 +172,6 @@ import {
   QUEUE_ERROR_DISPLAY_DURATION_MS,
   EXPAND_HINT_DURATION_MS,
 } from './constants.js';
-import { LoginWithGoogleRestartDialog } from './auth/LoginWithGoogleRestartDialog.js';
 import { NewAgentsChoice } from './components/NewAgentsNotification.js';
 import { isSlashCommand } from './utils/commandUtils.js';
 import { parseSlashCommand } from '../utils/commands.js';
@@ -759,7 +758,7 @@ export const AppContainer = (props: AppContainerProps) => {
 
   useEffect(() => {
     if (authState === AuthState.Authenticated && authContext.requiresRestart) {
-      setAuthState(AuthState.AwaitingGoogleLoginRestart);
+      setAuthState(AuthState.AwaitingLoginRestart);
       setAuthContext({});
     }
   }, [authState, authContext, setAuthState]);
@@ -2179,8 +2178,13 @@ Logging in with Google... Restarting Gemini CLI to continue.
 
   const nightly = props.version.includes('nightly');
 
+  const isAwaitingLoginRestart = authState === AuthState.AwaitingLoginRestart;
+  const loginRestartMessage =
+    settings.merged.security.auth.selectedType === AuthType.USE_VERTEX_AI
+      ? 'Authenticating to Vertex AI in Cloud Shell requires a restart to apply project settings.'
+      : undefined;
+
   const dialogsVisible =
-    shouldShowIdePrompt ||
     shouldShowIdePrompt ||
     isFolderTrustDialogOpen ||
     isPolicyUpdateDialogOpen ||
@@ -2207,6 +2211,7 @@ Logging in with Google... Restarting Gemini CLI to continue.
     !!emptyWalletRequest ||
     isSessionBrowserOpen ||
     authState === AuthState.AwaitingApiKeyInput ||
+    isAwaitingLoginRestart ||
     !!newAgents;
 
   const hasPendingToolConfirmation = useMemo(
@@ -2440,6 +2445,8 @@ Logging in with Google... Restarting Gemini CLI to continue.
       accountSuspensionInfo,
       isAuthDialogOpen,
       isAwaitingApiKeyInput: authState === AuthState.AwaitingApiKeyInput,
+      isAwaitingLoginRestart,
+      loginRestartMessage,
       apiKeyDefaultValue,
       editorError,
       isEditorDialogOpen,
@@ -2641,6 +2648,8 @@ Logging in with Google... Restarting Gemini CLI to continue.
       customDialog,
       apiKeyDefaultValue,
       authState,
+      isAwaitingLoginRestart,
+      loginRestartMessage,
       transientMessage,
       bannerData,
       bannerVisible,
@@ -2713,6 +2722,10 @@ Logging in with Google... Restarting Gemini CLI to continue.
       setActiveBackgroundTaskPid,
       setIsBackgroundTaskListOpen,
       setAuthContext,
+      dismissLoginRestart: () => {
+        setAuthContext({});
+        setAuthState(AuthState.Updating);
+      },
       onHintInput: () => {},
       onHintBackspace: () => {},
       onHintClear: () => {},
@@ -2812,18 +2825,6 @@ Logging in with Google... Restarting Gemini CLI to continue.
       getPreferredEditor,
     ],
   );
-
-  if (authState === AuthState.AwaitingGoogleLoginRestart) {
-    return (
-      <LoginWithGoogleRestartDialog
-        onDismiss={() => {
-          setAuthContext({});
-          setAuthState(AuthState.Updating);
-        }}
-        config={config}
-      />
-    );
-  }
 
   return (
     <UIStateContext.Provider value={uiState}>
