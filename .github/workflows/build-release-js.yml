@@ -1,0 +1,29 @@
+name: 'Build JS Release'
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release-js:
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: 'Checkout'
+        uses: 'actions/checkout@v4'
+
+      - name: 'Setup Node'
+        uses: 'actions/setup-node@v4'
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: 'Install dependencies'
+        run: 'npm ci'
+
+      - name: 'Build release (JS)'
+        run: 'npm run build'
+
+      - name: 'Compute release version from JS script'
+        run: 'node scripts/get-release-version.js --type=stable'
